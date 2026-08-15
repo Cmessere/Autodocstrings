@@ -29,6 +29,9 @@ class SymbolState(BaseModel):
     """Hash of the current docstring text, or None if the symbol has no docstring."""
     approved_code_hash: str | None = None
     """The code_hash as of the last `approve`. None means never approved."""
+    approved_signature_hash: str | None = None
+    """The signature_hash as of the last `approve`, used only to flag signature
+    drift in `diff` -- it does not affect status, which is driven by code_hash."""
     updated_at: str
     """UTC timestamp (ISO 8601) of the last time code_hash changed. Stable across
     no-op scans so re-scanning with no changes doesn't touch this file."""
@@ -99,7 +102,12 @@ def approve_symbol(state: State, relpath: str, qualified_name: str) -> State:
     if file_state is None or qualified_name not in file_state.symbols:
         raise KeyError(f"No symbol {qualified_name!r} tracked in {relpath!r}")
     symbol = file_state.symbols[qualified_name]
-    updated_symbol = symbol.model_copy(update={"approved_code_hash": symbol.code_hash})
+    updated_symbol = symbol.model_copy(
+        update={
+            "approved_code_hash": symbol.code_hash,
+            "approved_signature_hash": symbol.signature_hash,
+        }
+    )
     new_symbols = {**file_state.symbols, qualified_name: updated_symbol}
     new_files = {**state.files, relpath: FileState(symbols=new_symbols)}
     return state.model_copy(update={"files": new_files})

@@ -38,6 +38,7 @@ extend-exclude = ["examples/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # required by typer's Option()/Argument() default-value idiom
 
 [tool.pyright]
 include = ["src"]

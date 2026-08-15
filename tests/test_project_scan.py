@@ -150,7 +150,7 @@ def test_scoped_scan_does_not_prune_files_outside_scope(tmp_path: Path) -> None:
     assert set(state1.files) == {"pkg_a/a.py", "pkg_b/b.py"}
 
     (tmp_path / "pkg_b/b.py").unlink()
-    state2 = scan_project(tmp_path, config, state1, scope=tmp_path / "pkg_a")
+    state2 = scan_project(tmp_path, config, state1, scopes=[tmp_path / "pkg_a"])
     assert "pkg_a/a.py" in state2.files
     assert "pkg_b/b.py" in state2.files  # untouched: outside the scanned scope
 
@@ -162,7 +162,7 @@ def test_scoped_scan_still_prunes_deletions_inside_scope(tmp_path: Path) -> None
     state1 = scan_project(tmp_path, config, State())
 
     (tmp_path / "pkg_a/other.py").unlink()
-    state2 = scan_project(tmp_path, config, state1, scope=tmp_path / "pkg_a")
+    state2 = scan_project(tmp_path, config, state1, scopes=[tmp_path / "pkg_a"])
     assert "pkg_a/a.py" in state2.files
     assert "pkg_a/other.py" not in state2.files
 

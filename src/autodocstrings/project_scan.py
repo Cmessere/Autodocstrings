@@ -42,25 +42,31 @@ def _merge_symbol(
     previous: SymbolState | None, fresh: Symbol, *, trust_existing: bool, now: str
 ) -> SymbolState:
     doc_hash = _doc_hash(fresh)
+    trusted_baseline = trust_existing and doc_hash is not None
     if previous is None:
-        approved = fresh.code_hash if (trust_existing and doc_hash is not None) else None
+        approved_code = fresh.code_hash if trusted_baseline else None
+        approved_signature = fresh.signature_hash if trusted_baseline else None
         updated_at = now
     else:
         code_changed = previous.code_hash != fresh.code_hash
-        approved = previous.approved_code_hash
+        approved_code = previous.approved_code_hash
+        approved_signature = previous.approved_signature_hash
         updated_at = now if code_changed else previous.updated_at
     return SymbolState(
         code_hash=fresh.code_hash,
         signature_hash=fresh.signature_hash,
         doc_hash=doc_hash,
-        approved_code_hash=approved,
+        approved_code_hash=approved_code,
+        approved_signature_hash=approved_signature,
         updated_at=updated_at,
         ignored=fresh.ignored,
     )
 
 
-def _in_scope(relpath: str, scope_rel: str | None) -> bool:
-    return scope_rel is None or relpath == scope_rel or relpath.startswith(scope_rel + "/")
+def _in_scope(relpath: str, scope_rels: frozenset[str] | None) -> bool:
+    if scope_rels is None:
+        return True
+    return any(relpath == s or relpath.startswith(s + "/") for s in scope_rels)
 
 
 def apply_scan(
@@ -69,21 +75,21 @@ def apply_scan(
     *,
     trust_existing: bool,
     now: str,
-    scope_rel: str | None = None,
+    scope_rels: frozenset[str] | None = None,
 ) -> State:
     """Merge freshly-parsed symbols into the previous state.
 
     Files/symbols absent from `parsed_files` are pruned (deleted or now
-    excluded) -- but only within `scope_rel` (a relative-posix file or
-    directory prefix). Files outside scope are left untouched, so a scoped
-    scan (`--path`/`--package`) never prunes state for the rest of the repo.
-    A symbol whose qualified name changed (rename) is a delete of the old
-    name plus an addition of the new one.
+    excluded) -- but only within `scope_rels` (relative-posix file or
+    directory prefixes). Files outside scope are left untouched, so a
+    scoped scan (`--path`/`--package`/`check --staged`) never prunes state
+    for the rest of the repo. A symbol whose qualified name changed (rename)
+    is a delete of the old name plus an addition of the new one.
     """
     new_files: dict[str, FileState] = {
         relpath: file_state
         for relpath, file_state in previous_state.files.items()
-        if relpath in parsed_files or not _in_scope(relpath, scope_rel)
+        if relpath in parsed_files or not _in_scope(relpath, scope_rels)
     }
     for relpath, symbols in parsed_files.items():
         previous_file = previous_state.files.get(relpath)
@@ -102,18 +108,23 @@ def apply_scan(
 
 
 def scan_project(
-    root: Path, config: Config, previous_state: State, scope: Path | None = None
+    root: Path,
+    config: Config,
+    previous_state: State,
+    scopes: list[Path] | None = None,
 ) -> State:
     """Discover, parse, and merge — the full `autodoc scan` pipeline.
 
-    `scope`, if given, restricts which discovered files are (re)parsed and
-    which state entries can be pruned, to a single file or directory.
+    `scopes`, if given, restricts which discovered files are (re)parsed and
+    which state entries can be pruned, to the given files/directories.
     """
     discovered = discover_files(root, config)
-    scope_rel: str | None = None
-    if scope is not None:
-        scope_rel = scope.resolve().relative_to(root.resolve()).as_posix()
-        discovered = {rp: lang for rp, lang in discovered.items() if _in_scope(rp, scope_rel)}
+    scope_rels: frozenset[str] | None = None
+    if scopes is not None:
+        scope_rels = frozenset(
+            scope.resolve().relative_to(root.resolve()).as_posix() for scope in scopes
+        )
+        discovered = {rp: lang for rp, lang in discovered.items() if _in_scope(rp, scope_rels)}
 
     parsed: dict[str, list[Symbol]] = {}
     for relpath, language in discovered.items():
@@ -125,5 +136,5 @@ def scan_project(
         parsed,
         trust_existing=config.init.trust_existing,
         now=now_iso(),
-        scope_rel=scope_rel,
+        scope_rels=scope_rels,
     )
