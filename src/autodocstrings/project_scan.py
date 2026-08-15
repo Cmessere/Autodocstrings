@@ -59,16 +59,32 @@ def _merge_symbol(
     )
 
 
+def _in_scope(relpath: str, scope_rel: str | None) -> bool:
+    return scope_rel is None or relpath == scope_rel or relpath.startswith(scope_rel + "/")
+
+
 def apply_scan(
-    previous_state: State, parsed_files: dict[str, list[Symbol]], *, trust_existing: bool, now: str
+    previous_state: State,
+    parsed_files: dict[str, list[Symbol]],
+    *,
+    trust_existing: bool,
+    now: str,
+    scope_rel: str | None = None,
 ) -> State:
     """Merge freshly-parsed symbols into the previous state.
 
     Files/symbols absent from `parsed_files` are pruned (deleted or now
-    excluded). A symbol whose qualified name changed (rename) is a delete of
-    the old name plus an addition of the new one.
+    excluded) -- but only within `scope_rel` (a relative-posix file or
+    directory prefix). Files outside scope are left untouched, so a scoped
+    scan (`--path`/`--package`) never prunes state for the rest of the repo.
+    A symbol whose qualified name changed (rename) is a delete of the old
+    name plus an addition of the new one.
     """
-    new_files: dict[str, FileState] = {}
+    new_files: dict[str, FileState] = {
+        relpath: file_state
+        for relpath, file_state in previous_state.files.items()
+        if relpath in parsed_files or not _in_scope(relpath, scope_rel)
+    }
     for relpath, symbols in parsed_files.items():
         previous_file = previous_state.files.get(relpath)
         previous_symbols = previous_file.symbols if previous_file is not None else {}
@@ -85,14 +101,29 @@ def apply_scan(
     return State(files=new_files)
 
 
-def scan_project(root: Path, config: Config, previous_state: State) -> State:
-    """Discover, parse, and merge — the full `autodoc scan` pipeline."""
+def scan_project(
+    root: Path, config: Config, previous_state: State, scope: Path | None = None
+) -> State:
+    """Discover, parse, and merge — the full `autodoc scan` pipeline.
+
+    `scope`, if given, restricts which discovered files are (re)parsed and
+    which state entries can be pruned, to a single file or directory.
+    """
     discovered = discover_files(root, config)
+    scope_rel: str | None = None
+    if scope is not None:
+        scope_rel = scope.resolve().relative_to(root.resolve()).as_posix()
+        discovered = {rp: lang for rp, lang in discovered.items() if _in_scope(rp, scope_rel)}
+
     parsed: dict[str, list[Symbol]] = {}
     for relpath, language in discovered.items():
         source = (root / relpath).read_text(encoding="utf-8")
         adapter = get_adapter(language)
         parsed[relpath] = adapter.parse(source, relpath)
     return apply_scan(
-        previous_state, parsed, trust_existing=config.init.trust_existing, now=now_iso()
+        previous_state,
+        parsed,
+        trust_existing=config.init.trust_existing,
+        now=now_iso(),
+        scope_rel=scope_rel,
     )

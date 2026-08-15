@@ -142,6 +142,31 @@ def test_rename_is_delete_plus_new(tmp_path: Path) -> None:
     assert compute_status(state2.files["a.py"].symbols["renamed"]) == "stale"
 
 
+def test_scoped_scan_does_not_prune_files_outside_scope(tmp_path: Path) -> None:
+    config = Config()
+    _write(tmp_path, "pkg_a/a.py", "def f():\n    return 1\n")
+    _write(tmp_path, "pkg_b/b.py", "def g():\n    return 2\n")
+    state1 = scan_project(tmp_path, config, State())
+    assert set(state1.files) == {"pkg_a/a.py", "pkg_b/b.py"}
+
+    (tmp_path / "pkg_b/b.py").unlink()
+    state2 = scan_project(tmp_path, config, state1, scope=tmp_path / "pkg_a")
+    assert "pkg_a/a.py" in state2.files
+    assert "pkg_b/b.py" in state2.files  # untouched: outside the scanned scope
+
+
+def test_scoped_scan_still_prunes_deletions_inside_scope(tmp_path: Path) -> None:
+    config = Config()
+    _write(tmp_path, "pkg_a/a.py", "def f():\n    return 1\n")
+    _write(tmp_path, "pkg_a/other.py", "def h():\n    return 3\n")
+    state1 = scan_project(tmp_path, config, State())
+
+    (tmp_path / "pkg_a/other.py").unlink()
+    state2 = scan_project(tmp_path, config, state1, scope=tmp_path / "pkg_a")
+    assert "pkg_a/a.py" in state2.files
+    assert "pkg_a/other.py" not in state2.files
+
+
 def test_idempotent_rescan_produces_identical_state(tmp_path: Path) -> None:
     config = Config()
     _write(tmp_path, "a.py", 'def f():\n    """Does a thing."""\n    return 1\n')
