@@ -110,6 +110,26 @@ def test_approve_by_path_scope(tmp_path: Path) -> None:
     assert "Approved 2 symbol" in result.stdout
 
 
+def test_status_package_scope_from_within_package(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg_a/__init__.py", "")
+    _write(tmp_path, "pkg_a/mod.py", "def f():\n    return 1\n")
+    _write(tmp_path, "pkg_b/__init__.py", "")
+    _write(tmp_path, "pkg_b/mod.py", "def g():\n    return 2\n")
+    _run("init", "--yes", cwd=tmp_path)
+
+    result = _run("status", "--package", cwd=tmp_path / "pkg_a")
+    assert "pkg_a/mod.py:f" in result.stdout
+    assert "pkg_b/mod.py:g" not in result.stdout
+
+
+def test_path_and_package_together_is_an_error(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg_a/__init__.py", "")
+    _write(tmp_path, "pkg_a/mod.py", "def f():\n    return 1\n")
+    _run("init", "--yes", cwd=tmp_path)
+    result = _run("status", "--path", "pkg_a", "--package", cwd=tmp_path)
+    assert result.returncode == 2
+
+
 def test_check_block_mode_exits_nonzero_when_stale(tmp_path: Path) -> None:
     _write(tmp_path, "sample.py", "def g():\n    return 2\n")
     _run("init", "--yes", cwd=tmp_path)

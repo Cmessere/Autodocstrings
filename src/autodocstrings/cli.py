@@ -63,16 +63,42 @@ def _scope_relpaths(root: Path, path: Path) -> str:
     return path.resolve().relative_to(root).as_posix()
 
 
+def _find_package_root(start: Path) -> Path:
+    """Nearest ancestor (including `start`) that looks like a package: the
+    closest directory containing `package.json`, or the closest directory
+    containing `__init__.py`. Falls back to `start` if neither is found."""
+    current = start.resolve()
+    for directory in [current, *current.parents]:
+        if (directory / "package.json").is_file() or (directory / "__init__.py").is_file():
+            return directory
+    return current
+
+
+def _resolve_scope(path: Path | None, package: bool) -> Path | None:
+    if path is not None and package:
+        typer.echo("Use either --path or --package, not both.", err=True)
+        raise typer.Exit(2)
+    if package:
+        return _find_package_root(Path.cwd())
+    return path
+
+
+_PATH_OPTION = typer.Option(None, "--path", help="Restrict to a file or directory")
+_PACKAGE_OPTION = typer.Option(
+    False, "--package", help="Restrict to the nearest enclosing package (__init__.py/package.json)"
+)
+
+
 @app.command()
 def scan(
-    path: Path | None = typer.Option(
-        None, "--path", help="Restrict scanning to a file or directory"
-    ),
+    path: Path | None = _PATH_OPTION,
+    package: bool = _PACKAGE_OPTION,
 ) -> None:
     """(Re)parse source and refresh state.json's hashes."""
     project = load_project()
     previous = project.load_state()
-    scopes = [path] if path is not None else None
+    scope = _resolve_scope(path, package)
+    scopes = [scope] if scope is not None else None
     new_state = scan_project(project.root, project.config, previous, scopes=scopes)
     project.save_state(new_state)
     total_symbols = sum(len(f.symbols) for f in new_state.files.values())
@@ -81,7 +107,8 @@ def scan(
 
 @app.command()
 def status(
-    path: Path | None = typer.Option(None, "--path", help="Restrict to a file or directory"),
+    path: Path | None = _PATH_OPTION,
+    package: bool = _PACKAGE_OPTION,
     json_output: bool = typer.Option(False, "--json"),
     only: str | None = typer.Option(None, "--only", help="Comma-separated statuses to include"),
 ) -> None:
@@ -90,8 +117,9 @@ def status(
     state = project.load_state()
     entries = build_status_entries(state)
 
-    if path is not None:
-        scope_rel = _scope_relpaths(project.root, path)
+    scope = _resolve_scope(path, package)
+    if scope is not None:
+        scope_rel = _scope_relpaths(project.root, scope)
         entries = [
             e for e in entries if e["file"] == scope_rel or e["file"].startswith(scope_rel + "/")
         ]
@@ -153,10 +181,12 @@ def approve(
     path: Path | None = typer.Option(
         None, "--path", help="Approve every tracked symbol under a file or directory"
     ),
+    package: bool = _PACKAGE_OPTION,
 ) -> None:
     """Mark symbols' current code as matching their docs."""
-    if target is None and path is None:
-        typer.echo("Provide a target (file[:qualified_name]) or --path.", err=True)
+    scope = _resolve_scope(path, package)
+    if target is None and scope is None:
+        typer.echo("Provide a target (file[:qualified_name]), --path, or --package.", err=True)
         raise typer.Exit(2)
 
     project = load_project()
@@ -178,8 +208,8 @@ def approve(
             state = approve_symbol(state, relpath, name)
             approved_count += 1
     else:
-        assert path is not None
-        scope_rel = _scope_relpaths(project.root, path)
+        assert scope is not None
+        scope_rel = _scope_relpaths(project.root, scope)
         for relpath, file_state in list(state.files.items()):
             if not (relpath == scope_rel or relpath.startswith(scope_rel + "/")):
                 continue
