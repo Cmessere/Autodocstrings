@@ -1,0 +1,155 @@
+{
+  "$defs": {
+    "ConventionsConfig": {
+      "additionalProperties": false,
+      "description": "Docstring convention to use per language.",
+      "properties": {
+        "python": {
+          "default": "google",
+          "enum": [
+            "google",
+            "numpy",
+            "sphinx"
+          ],
+          "title": "Python",
+          "type": "string"
+        },
+        "typescript": {
+          "default": "tsdoc",
+          "enum": [
+            "jsdoc",
+            "tsdoc"
+          ],
+          "title": "Typescript",
+          "type": "string"
+        }
+      },
+      "title": "ConventionsConfig",
+      "type": "object"
+    },
+    "HookConfig": {
+      "additionalProperties": false,
+      "description": "Git hook behavior.",
+      "properties": {
+        "mode": {
+          "default": "warn",
+          "enum": [
+            "off",
+            "warn",
+            "block"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "block_on": {
+          "items": {
+            "enum": [
+              "stale",
+              "never_started"
+            ],
+            "type": "string"
+          },
+          "title": "Block On",
+          "type": "array"
+        }
+      },
+      "title": "HookConfig",
+      "type": "object"
+    },
+    "InitConfig": {
+      "additionalProperties": false,
+      "description": "Behavior of `autodoc init`'s first scan.",
+      "properties": {
+        "trust_existing": {
+          "default": true,
+          "title": "Trust Existing",
+          "type": "boolean"
+        }
+      },
+      "title": "InitConfig",
+      "type": "object"
+    },
+    "NoisePolicyConfig": {
+      "additionalProperties": false,
+      "description": "Knobs controlling how much the agent is allowed to write.",
+      "properties": {
+        "document_trivial": {
+          "default": false,
+          "title": "Document Trivial",
+          "type": "boolean"
+        },
+        "params": {
+          "default": "when_non_obvious",
+          "enum": [
+            "when_non_obvious",
+            "always",
+            "never"
+          ],
+          "title": "Params",
+          "type": "string"
+        },
+        "include_examples": {
+          "default": false,
+          "title": "Include Examples",
+          "type": "boolean"
+        }
+      },
+      "title": "NoisePolicyConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Top-level autodocstrings configuration.",
+  "properties": {
+    "include": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Include",
+      "type": "array"
+    },
+    "exclude": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Exclude",
+      "type": "array"
+    },
+    "languages": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Languages",
+      "type": "object"
+    },
+    "conventions": {
+      "$ref": "#/$defs/ConventionsConfig"
+    },
+    "verbosity": {
+      "default": "standard",
+      "enum": [
+        "minimal",
+        "standard",
+        "detailed"
+      ],
+      "title": "Verbosity",
+      "type": "string"
+    },
+    "noise_policy": {
+      "$ref": "#/$defs/NoisePolicyConfig"
+    },
+    "hook": {
+      "$ref": "#/$defs/HookConfig"
+    },
+    "init": {
+      "$ref": "#/$defs/InitConfig"
+    },
+    "state_file": {
+      "default": ".autodocstrings/state.json",
+      "title": "State File",
+      "type": "string"
+    }
+  },
+  "title": "Config",
+  "type": "object"
+}
