@@ -1,0 +1,7 @@
+- id: autodocstrings-check
+  name: autodocstrings check
+  description: Fails (in `block` mode) if staged symbols are stale or never documented.
+  entry: autodoc check --staged
+  language: python
+  pass_filenames: false
+  always_run: true

@@ -349,5 +349,58 @@ def init(
     typer.echo(f"Initial scan: {len(new_state.files)} file(s), {total_symbols} symbol(s) tracked.")
 
 
+_HOOK_MARKER_START = "# >>> autodocstrings hook >>>"
+_HOOK_MARKER_END = "# <<< autodocstrings hook <<<"
+_HOOK_BLOCK = f"{_HOOK_MARKER_START}\nautodoc check --staged\n{_HOOK_MARKER_END}\n"
+
+
+def _find_git_dir(root: Path) -> Path | None:
+    for directory in [root, *root.parents]:
+        git_path = directory / ".git"
+        if git_path.is_dir():
+            return git_path
+        if git_path.is_file():
+            content = git_path.read_text(encoding="utf-8").strip()
+            if content.startswith("gitdir:"):
+                return (directory / content.split(":", 1)[1].strip()).resolve()
+    return None
+
+
+@app.command(name="install-hook")
+def install_hook(
+    force: bool = typer.Option(
+        False, "--force", help="Append to an existing pre-commit hook without asking"
+    ),
+) -> None:
+    """Write (or append to) `.git/hooks/pre-commit` to run `autodoc check --staged`."""
+    project = load_project()
+    git_dir = _find_git_dir(project.root)
+    if git_dir is None:
+        typer.echo("Not inside a git repository (no .git directory found).", err=True)
+        raise typer.Exit(1)
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / "pre-commit"
+
+    if hook_path.exists():
+        existing = hook_path.read_text(encoding="utf-8")
+        if _HOOK_MARKER_START in existing:
+            typer.echo(f"{hook_path} already has an autodocstrings hook installed.")
+            raise typer.Exit(0)
+        if not force and not typer.confirm(
+            f"{hook_path} already exists. Append the autodocstrings hook to it?", default=True
+        ):
+            raise typer.Exit(0)
+        new_content = existing.rstrip("\n") + "\n\n" + _HOOK_BLOCK
+    else:
+        new_content = "#!/bin/sh\n" + _HOOK_BLOCK
+
+    hook_path.write_text(new_content, encoding="utf-8", newline="\n")
+    mode = hook_path.stat().st_mode
+    hook_path.chmod(mode | 0o111)
+    typer.echo(f"Installed pre-commit hook at {hook_path}")
+
+
 if __name__ == "__main__":
     app()
