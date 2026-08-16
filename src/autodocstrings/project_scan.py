@@ -4,31 +4,41 @@ the result into the persisted `State` — the engine behind `autodoc scan`.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from autodocstrings.adapters import get_adapter
 from autodocstrings.config import Config
+from autodocstrings.globbing import glob_match
 from autodocstrings.hashing import hash_text, normalize_whitespace
 from autodocstrings.state import FileState, State, SymbolState, now_iso
 from autodocstrings.symbols import Symbol
 
+# Pruned from directory walks outright, as a performance optimization on top
+# of the config's own `exclude` patterns -- these can otherwise be enormous
+# (vendored virtualenvs, node_modules) and there is never a reason to
+# descend into them.
+_PRUNED_DIR_NAMES = frozenset({"node_modules", ".venv", "venv", "__pycache__", ".git"})
+
 
 def discover_files(root: Path, config: Config) -> dict[str, str]:
     """Return {relative_posix_path: language} for every file the config selects."""
-    included: set[Path] = set()
-    for pattern in config.include:
-        included.update(p for p in root.glob(pattern) if p.is_file())
-
-    excluded: set[Path] = set()
-    for pattern in config.exclude:
-        excluded.update(p for p in root.glob(pattern) if p.is_file())
-
     result: dict[str, str] = {}
-    for path in included - excluded:
-        language = config.languages.get(path.suffix)
-        if language is None:
-            continue
-        result[path.relative_to(root).as_posix()] = language
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _PRUNED_DIR_NAMES]
+        for filename in filenames:
+            file_path = Path(dirpath) / filename
+            relpath = file_path.relative_to(root).as_posix()
+
+            if not any(glob_match(relpath, pattern) for pattern in config.include):
+                continue
+            if any(glob_match(relpath, pattern) for pattern in config.exclude):
+                continue
+
+            language = config.languages.get(file_path.suffix)
+            if language is None:
+                continue
+            result[relpath] = language
     return result
 
 

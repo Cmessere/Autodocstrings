@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections import Counter
 from pathlib import Path
@@ -313,12 +314,12 @@ _NOISY_DIRS = {"node_modules", ".venv", "venv", "__pycache__", "dist", "build", 
 def _detect_languages(root: Path) -> set[str]:
     defaults = Config()
     found: set[str] = set()
-    for path in root.glob("**/*"):
-        if not path.is_file() or any(part in _NOISY_DIRS for part in path.parts):
-            continue
-        language = defaults.languages.get(path.suffix)
-        if language:
-            found.add(language)
+    for _dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _NOISY_DIRS]
+        for filename in filenames:
+            language = defaults.languages.get(Path(filename).suffix)
+            if language:
+                found.add(language)
     return found
 
 
